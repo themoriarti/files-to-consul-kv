@@ -11,17 +11,15 @@ import logging
 import sys
 import time
 import argparse
-
+import re
 
 # Yield successive n-sized 
 # chunks from l. 
 # https://www.geeksforgeeks.org/break-list-chunks-size-n-python/
 def divide_chunks(l, n): 
-    
     # looping till length l 
-    for i in range(0, len(l), n):  
+    for i in range(0, len(l), n):
         yield l[i:i + n] 
-
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -70,7 +68,7 @@ def main():
 
     if not args.consul_kv_root and not args.consul_kv_root_file:
         dump_help = True
-   
+
     if dump_help:
         parser.print_help()
         sys.exit(1)
@@ -80,7 +78,11 @@ def main():
                         filename=args.log_file,filemode='w')
     logging.Formatter.converter = time.gmtime
 
-    url = "{}/v1/txn".format(args.consul_url)
+    # Check single or multi node
+    if re.match(r"[A-Z0-9.]+;", url):
+        url = "http://{}/v1/txn".format(re.findall('+',text)[0])
+    else:
+        url = "{}/v1/txn".format(args.consul_url)
 
     if args.consul_data_center is not None:
         url += "?dc={}".format(args.consul_data_center)
@@ -125,7 +127,7 @@ def main():
 
             for name in files:
                 filepath = os.path.join(root, name)
-            
+
                 targetkv = filepath.replace(args.fs_kv_path, "", 1)
 
                 with open (filepath, "r") as kvfile:
@@ -153,14 +155,13 @@ def main():
                 logging.info("Exiting, confirmation prompt input was: " + proceed)
                 sys.exit(1)
 
-
         # we can only max send 64 per request...
         # https://github.com/hashicorp/consul/issues/7278
         kv_chunks = list(divide_chunks(kvs, int(args.chunk_size))) 
 
         logging.info("Number of kvs totals: {}, this has to be split up " \
             "into {} {} kv chunks: https://github.com/hashicorp/consul/issues/7278".format(len(kvs),len(kv_chunks),int(args.chunk_size)))
-        
+
         exit_with_exit_code = 0
 
         for kvchunk in kv_chunks:
@@ -170,7 +171,7 @@ def main():
             response = requests.request("PUT", url, data=json.dumps(kvchunk), headers=headers)
 
             time.sleep(float(args.sleep_delay))
-            
+
             if response.status_code == 200:
                 logging.debug("KVs 'set' OK: {}".format(response.content))
             else:
